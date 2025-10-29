@@ -1,0 +1,7 @@
+steps:
+  - name: Install dependencies
+    run: go mod download
+  - name: Run tests
+    run: go test ./...
+  - name: Build binary
+    run: go build -o pipego .
