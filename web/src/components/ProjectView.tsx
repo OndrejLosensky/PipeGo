@@ -68,14 +68,26 @@ export function ProjectView() {
     };
   }, [selectedProject, refetch]);
 
-  // Group runs by part (do this early so handlers can use it)
-  const groupedByPart: Record<string, PartRunStats[]> = {};
+  // Group runs hierarchically: group -> part -> runs (do this early so handlers can use it)
+  const groupedHierarchy: Record<string, Record<string, PartRunStats[]>> = {};
   stats?.forEach((stat) => {
-    if (!groupedByPart[stat.part]) {
-      groupedByPart[stat.part] = [];
+    const groupName = stat.group || 'Other'; // Ungrouped parts go under "Other"
+    const partName = stat.part;
+    
+    if (!groupedHierarchy[groupName]) {
+      groupedHierarchy[groupName] = {};
     }
-    groupedByPart[stat.part].push(stat);
+    if (!groupedHierarchy[groupName][partName]) {
+      groupedHierarchy[groupName][partName] = [];
+    }
+    groupedHierarchy[groupName][partName].push(stat);
   });
+  
+  // Helper to get full part path for API calls
+  const getFullPartPath = (group: string, part: string) => {
+    if (group === 'Other' || group === '') return part;
+    return `${group}.${part}`;
+  };
 
   // Clear runningParts when no runs are actually running
   useEffect(() => {
@@ -127,8 +139,8 @@ export function ProjectView() {
     // Prevent double-clicking
     if (triggeringParts.size > 0) return;
 
-    // Get all unique parts from current stats
-    const parts = Array.from(new Set(stats.map(s => s.part)));
+    // Get all unique full part paths from current stats
+    const parts = Array.from(new Set(stats.map(s => getFullPartPath(s.group, s.part))));
     
     // Mark all parts as triggering and running
     setTriggeringParts(new Set(parts));
@@ -152,10 +164,10 @@ export function ProjectView() {
   };
 
   // Check if a part has any running runs or is being triggered
-  const isPartRunning = (part: string) => {
-    return triggeringParts.has(part) ||
-           runningParts.has(part) || 
-           groupedByPart[part]?.[0]?.status === 'running';
+  const isPartRunning = (fullPartPath: string, runs: PartRunStats[]) => {
+    return triggeringParts.has(fullPartPath) ||
+           runningParts.has(fullPartPath) || 
+           runs?.[0]?.status === 'running';
   };
 
   const formatTime = (dateStr: string) => {
@@ -220,95 +232,106 @@ export function ProjectView() {
               {isLoading && !stats ? (
                 <div className="text-gray-500">Loading...</div>
               ) : (
-                <div className="space-y-6">
-                  {Object.entries(groupedByPart).map(([part, runs]) => {
-                    const partRunning = isPartRunning(part);
-                    const hasRuns = runs.length > 0 && runs[0].run_id !== 0;
-                    
-                    return (
-                      <div key={part} className="bg-white rounded-lg border border-gray-200 shadow-sm">
-                        <div className="px-6 py-2.5 border-b border-gray-200 flex items-center justify-between">
-                          <h3 className="text-base font-semibold text-gray-900 capitalize flex items-center gap-2">
-                            {part}
-                            {partRunning && (
-                              <div className="w-3.5 h-3.5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                            )}
-                          </h3>
-                          <button
-                            onClick={() => handleTriggerRun(part)}
-                            disabled={partRunning}
-                            className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                              partRunning
-                                ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                                : 'bg-green-600 text-white hover:bg-green-700'
-                            }`}
-                          >
-                            {partRunning ? 'Running...' : 'Run'}
-                          </button>
-                        </div>
-                        {!hasRuns ? (
-                          <div className="px-6 py-8 text-center text-gray-500 text-sm">
-                            No runs yet. Click "Run" to start!
-                          </div>
-                        ) : (
-                          <div className="divide-y divide-gray-100">
-                            {runs.map((run) => (
-                            <Link
-                              key={run.run_id}
-                              to={`/projects/${selectedProject}/runs/${run.run_id}`}
-                              className="flex items-center justify-between px-6 py-2.5 hover:bg-gray-50 transition-colors"
-                            >
-                              <div className="flex items-center gap-3">
-                                {/* Status indicator dot */}
-                                <div className="relative flex items-center justify-center w-2 h-2">
-                                  <span
-                                    className={`block w-2 h-2 rounded-full ${
-                                      run.status === 'success'
-                                        ? 'bg-green-500'
-                                        : run.status === 'failed'
-                                        ? 'bg-red-500'
-                                        : 'bg-yellow-500'
-                                    }`}
-                                  />
-                                  {run.status === 'running' && (
-                                    <span className="absolute w-2 h-2 rounded-full bg-yellow-400 animate-ping" />
+                <div className="space-y-8">
+                  {Object.entries(groupedHierarchy).map(([groupName, parts]) => (
+                    <div key={groupName}>
+                      {/* Group Header */}
+                      <h3 className="text-lg font-bold text-gray-900 mb-4 capitalize">{groupName}</h3>
+                      
+                      {/* Parts within group */}
+                      <div className="space-y-4">
+                        {Object.entries(parts).map(([partName, runs]) => {
+                          const fullPartPath = getFullPartPath(groupName, partName);
+                          const partRunning = isPartRunning(fullPartPath, runs);
+                          const hasRuns = runs.length > 0 && runs[0].run_id !== 0;
+                          
+                          return (
+                            <div key={partName} className="bg-white rounded-lg border border-gray-200 shadow-sm">
+                              <div className="px-6 py-2.5 border-b border-gray-200 flex items-center justify-between">
+                                <h4 className="text-base font-semibold text-gray-900 capitalize flex items-center gap-2">
+                                  {partName}
+                                  {partRunning && (
+                                    <div className="w-3.5 h-3.5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
                                   )}
+                                </h4>
+                                <button
+                                  onClick={() => handleTriggerRun(fullPartPath)}
+                                  disabled={partRunning}
+                                  className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+                                    partRunning
+                                      ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                                      : 'bg-green-600 text-white hover:bg-green-700'
+                                  }`}
+                                >
+                                  {partRunning ? 'Running...' : 'Run'}
+                                </button>
+                              </div>
+                              {!hasRuns ? (
+                                <div className="px-6 py-8 text-center text-gray-500 text-sm">
+                                  No runs yet. Click "Run" to start!
                                 </div>
-                                
-                                {/* Run info */}
-                                <div className="flex items-center gap-2">
-                                  <span className="font-medium text-gray-900">Run #{run.run_id}</span>
-                                  <span
-                                    className={`px-2 py-0.5 text-xs font-medium rounded ${
-                                      run.status === 'success'
-                                        ? 'bg-green-100 text-green-700'
-                                        : run.status === 'failed'
-                                        ? 'bg-red-100 text-red-700'
-                                        : 'bg-yellow-100 text-yellow-700'
-                                    }`}
+                              ) : (
+                                <div className="divide-y divide-gray-100">
+                                  {runs.map((run) => (
+                                  <Link
+                                    key={run.run_id}
+                                    to={`/projects/${selectedProject}/runs/${run.run_id}`}
+                                    className="flex items-center justify-between px-6 py-2.5 hover:bg-gray-50 transition-colors"
                                   >
-                                    {run.status}
-                                  </span>
-                                </div>
-                              </div>
+                                    <div className="flex items-center gap-3">
+                                      {/* Status indicator dot */}
+                                      <div className="relative flex items-center justify-center w-2 h-2">
+                                        <span
+                                          className={`block w-2 h-2 rounded-full ${
+                                            run.status === 'success'
+                                              ? 'bg-green-500'
+                                              : run.status === 'failed'
+                                              ? 'bg-red-500'
+                                              : 'bg-yellow-500'
+                                          }`}
+                                        />
+                                        {run.status === 'running' && (
+                                          <span className="absolute w-2 h-2 rounded-full bg-yellow-400 animate-ping" />
+                                        )}
+                                      </div>
+                                      
+                                      {/* Run info */}
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium text-gray-900">Run #{run.run_id}</span>
+                                        <span
+                                          className={`px-2 py-0.5 text-xs font-medium rounded ${
+                                            run.status === 'success'
+                                              ? 'bg-green-100 text-green-700'
+                                              : run.status === 'failed'
+                                              ? 'bg-red-100 text-red-700'
+                                              : 'bg-yellow-100 text-yellow-700'
+                                          }`}
+                                        >
+                                          {run.status}
+                                        </span>
+                                      </div>
+                                    </div>
 
-                              {/* Right side: steps, time, duration */}
-                              <div className="flex items-center gap-3 text-sm text-gray-600 font-mono">
-                                <span className="w-16 text-right">{run.step_count} steps</span>
-                                <span className="text-gray-400">·</span>
-                                <span className="w-20 text-right">{formatTime(run.started_at)}</span>
-                                <span className="text-gray-400">·</span>
-                                <span className="w-16 text-right font-medium">
-                                  {formatDuration(run.duration)}
-                                </span>
-                              </div>
-                            </Link>
-                          ))}
-                          </div>
-                        )}
+                                    {/* Right side: steps, time, duration */}
+                                    <div className="flex items-center gap-3 text-sm text-gray-600 font-mono">
+                                      <span className="w-16 text-right">{run.step_count} steps</span>
+                                      <span className="text-gray-400">·</span>
+                                      <span className="w-20 text-right">{formatTime(run.started_at)}</span>
+                                      <span className="text-gray-400">·</span>
+                                      <span className="w-16 text-right font-medium">
+                                        {formatDuration(run.duration)}
+                                      </span>
+                                    </div>
+                                  </Link>
+                                ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
-                    );
-                  })}
+                    </div>
+                  ))}
                 </div>
               )}
             </>

@@ -7,11 +7,11 @@ import (
 )
 
 // CreateRun creates a new run record
-func (s *Storage) CreateRun(configPath, projectName, part string) (*Run, error) {
+func (s *Storage) CreateRun(configPath, projectName, groupName, part string) (*Run, error) {
 	now := time.Now()
 	result, err := s.db.Exec(
-		"INSERT INTO runs (status, config_path, project_name, part, started_at) VALUES (?, ?, ?, ?, ?)",
-		"running", configPath, projectName, part, now,
+		`INSERT INTO runs (status, config_path, project_name, "group", part, started_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"running", configPath, projectName, groupName, part, now,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create run: %w", err)
@@ -27,6 +27,7 @@ func (s *Storage) CreateRun(configPath, projectName, part string) (*Run, error) 
 		Status:      "running",
 		ConfigPath:  configPath,
 		ProjectName: projectName,
+		Group:       groupName,
 		Part:        part,
 		StartedAt:   now,
 	}, nil
@@ -48,7 +49,7 @@ func (s *Storage) UpdateRunStatus(runID int, status string, duration time.Durati
 
 // GetRuns retrieves all runs, ordered by most recent first
 func (s *Storage) GetRuns(limit int) ([]*Run, error) {
-	query := "SELECT id, status, config_path, project_name, part, started_at, finished_at, duration FROM runs ORDER BY started_at DESC LIMIT ?"
+	query := `SELECT id, status, config_path, project_name, "group", part, started_at, finished_at, duration FROM runs ORDER BY started_at DESC LIMIT ?`
 	rows, err := s.db.Query(query, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query runs: %w", err)
@@ -61,7 +62,7 @@ func (s *Storage) GetRuns(limit int) ([]*Run, error) {
 		var finishedAt sql.NullTime
 		var duration sql.NullString
 
-		err := rows.Scan(&r.ID, &r.Status, &r.ConfigPath, &r.ProjectName, &r.Part, &r.StartedAt, &finishedAt, &duration)
+		err := rows.Scan(&r.ID, &r.Status, &r.ConfigPath, &r.ProjectName, &r.Group, &r.Part, &r.StartedAt, &finishedAt, &duration)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan run: %w", err)
 		}
@@ -87,9 +88,9 @@ func (s *Storage) GetRun(runID int) (*Run, error) {
 	var duration sql.NullString
 
 	err := s.db.QueryRow(
-		"SELECT id, status, config_path, project_name, part, started_at, finished_at, duration FROM runs WHERE id = ?",
+		`SELECT id, status, config_path, project_name, "group", part, started_at, finished_at, duration FROM runs WHERE id = ?`,
 		runID,
-	).Scan(&r.ID, &r.Status, &r.ConfigPath, &r.ProjectName, &r.Part, &r.StartedAt, &finishedAt, &duration)
+	).Scan(&r.ID, &r.Status, &r.ConfigPath, &r.ProjectName, &r.Group, &r.Part, &r.StartedAt, &finishedAt, &duration)
 
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("run not found")

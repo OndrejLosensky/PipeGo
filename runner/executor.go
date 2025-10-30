@@ -53,22 +53,25 @@ func RunPipelineWithOptions(configPath string, opts RunPipelineOptions) (*Pipeli
 	}
 
 	// Execute each part
-	for partName, steps := range allParts {
+	for fullPartPath, steps := range allParts {
 		// Skip this part if filter is set and doesn't match
-		if opts.PartFilter != "" && partName != opts.PartFilter {
+		if opts.PartFilter != "" && fullPartPath != opts.PartFilter {
 			continue
 		}
 
+		// Parse part name to extract group (e.g., "frontend.deploy" -> "frontend", "deploy")
+		groupName, partName := ParsePartName(fullPartPath)
+
 		if opts.StreamToTerminal {
-			if partName != "default" {
-				fmt.Printf("\n📦 Part: %s\n", partName)
+			if fullPartPath != "default" {
+				fmt.Printf("\n📦 Part: %s\n", fullPartPath)
 			}
 		}
 
 		// Create run in database for this part if storage is provided
 		var run *storage.Run
 		if opts.Storage != nil {
-			run, err = opts.Storage.CreateRun(configPath, projectName, partName)
+			run, err = opts.Storage.CreateRun(configPath, projectName, groupName, partName)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create run: %w", err)
 			}
@@ -77,7 +80,7 @@ func RunPipelineWithOptions(configPath string, opts RunPipelineOptions) (*Pipeli
 
 		// Execute each step in the part
 		for _, step := range steps {
-			stepResult, err := executeStep(step, partName, result.RunID, opts)
+			stepResult, err := executeStep(step, groupName, partName, result.RunID, opts)
 			
 			result.Steps = append(result.Steps, stepResult)
 			
@@ -116,7 +119,7 @@ func RunPipelineWithOptions(configPath string, opts RunPipelineOptions) (*Pipeli
 }
 
 // executeStep executes a single step and returns its result
-func executeStep(step Step, partName string, runID int, opts RunPipelineOptions) (StepResult, error) {
+func executeStep(step Step, groupName, partName string, runID int, opts RunPipelineOptions) (StepResult, error) {
 	stepStart := time.Now()
 
 	if opts.StreamToTerminal {
@@ -133,7 +136,7 @@ func executeStep(step Step, partName string, runID int, opts RunPipelineOptions)
 	var stepExec *storage.StepExecution
 	var err error
 	if opts.Storage != nil {
-		stepExec, err = opts.Storage.CreateStepExecution(runID, step.Name, step.Run, partName, category)
+		stepExec, err = opts.Storage.CreateStepExecution(runID, step.Name, step.Run, groupName, partName, category)
 		if err != nil {
 			return StepResult{}, fmt.Errorf("failed to create step execution: %w", err)
 		}

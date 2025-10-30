@@ -125,7 +125,7 @@ func GetRunStatus(store *storage.Storage) http.HandlerFunc {
 func PostRun(store *storage.Storage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		
+
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			json.NewEncoder(w).Encode(map[string]interface{}{
@@ -369,8 +369,8 @@ func GetProjectStats(store *storage.Storage, projectsConfig *runner.ProjectsConf
 
 		projectName := pathParts[2]
 
-		// Get latest 5 runs per part from database
-		stats, err := store.GetLatestRunsByPart(projectName, 5)
+		// Get latest run per part from database
+		stats, err := store.GetLatestRunsByPart(projectName, 1)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to get project stats: %v", err), http.StatusInternalServerError)
 			return
@@ -384,18 +384,27 @@ func GetProjectStats(store *storage.Storage, projectsConfig *runner.ProjectsConf
 			if err == nil {
 				// Get all parts from config
 				allParts := cfg.GetAllParts()
-				
-				// Track which parts have runs
+
+				// Track which parts have runs (by full path)
 				partsWithRuns := make(map[string]bool)
 				for _, stat := range stats {
-					partsWithRuns[stat.Part] = true
+					// Reconstruct full path for tracking
+					fullPath := stat.Part
+					if stat.Group != "" {
+						fullPath = stat.Group + "." + stat.Part
+					}
+					partsWithRuns[fullPath] = true
 				}
-				
+
 				// Add placeholder for parts without runs
-				for partName := range allParts {
-					if !partsWithRuns[partName] {
+				for fullPartPath := range allParts {
+					if !partsWithRuns[fullPartPath] {
+						// Parse the full path to extract group and part
+						groupName, partName := runner.ParsePartName(fullPartPath)
+
 						// Add empty entry for parts with no runs
 						stats = append(stats, storage.PartRunStats{
+							Group:     groupName,
 							Part:      partName,
 							RunID:     0,
 							Status:    "",
@@ -410,4 +419,3 @@ func GetProjectStats(store *storage.Storage, projectsConfig *runner.ProjectsConf
 		json.NewEncoder(w).Encode(stats)
 	}
 }
-

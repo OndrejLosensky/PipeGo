@@ -7,7 +7,8 @@ import (
 
 // PartRunStats represents the latest runs grouped by part
 type PartRunStats struct {
-	Part         string  `json:"part"`
+	Group        string  `json:"group"`        // Group name (e.g., "frontend", "backend") or empty
+	Part         string  `json:"part"`         // Part name or full path (e.g., "deploy" or "frontend.deploy")
 	RunID        int     `json:"run_id"`
 	Status       string  `json:"status"`
 	Duration     *string `json:"duration,omitempty"`
@@ -20,6 +21,7 @@ func (s *Storage) GetLatestRunsByPart(projectName string, limit int) ([]PartRunS
 	// Simple query without window functions for better SQLite compatibility
 	query := `
 		SELECT 
+			COALESCE(r."group", '') as "group",
 			r.part,
 			r.id,
 			r.status,
@@ -29,8 +31,8 @@ func (s *Storage) GetLatestRunsByPart(projectName string, limit int) ([]PartRunS
 		FROM runs r
 		LEFT JOIN step_executions se ON r.id = se.run_id
 		WHERE r.project_name = ?
-		GROUP BY r.id, r.part, r.status, r.duration, r.started_at
-		ORDER BY r.part, r.started_at DESC
+		GROUP BY r.id, r."group", r.part, r.status, r.duration, r.started_at
+		ORDER BY r."group", r.part, r.started_at DESC
 	`
 
 	rows, err := s.db.Query(query, projectName)
@@ -48,6 +50,7 @@ func (s *Storage) GetLatestRunsByPart(projectName string, limit int) ([]PartRunS
 		var duration sql.NullString
 
 		err := rows.Scan(
+			&stat.Group,
 			&stat.Part,
 			&stat.RunID,
 			&stat.Status,
@@ -60,10 +63,11 @@ func (s *Storage) GetLatestRunsByPart(projectName string, limit int) ([]PartRunS
 		}
 
 		// Limit runs per part
-		if partCounts[stat.Part] >= limit {
+		partKey := stat.Group + "." + stat.Part
+		if partCounts[partKey] >= limit {
 			continue
 		}
-		partCounts[stat.Part]++
+		partCounts[partKey]++
 
 		if duration.Valid {
 			durationStr := duration.String

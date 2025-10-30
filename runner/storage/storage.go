@@ -36,6 +36,7 @@ func (s *Storage) initSchema() error {
 			status TEXT NOT NULL,
 			config_path TEXT NOT NULL,
 			project_name TEXT NOT NULL DEFAULT '',
+			"group" TEXT NOT NULL DEFAULT '',
 			part TEXT NOT NULL DEFAULT 'default',
 			started_at DATETIME NOT NULL,
 			finished_at DATETIME,
@@ -48,6 +49,7 @@ func (s *Storage) initSchema() error {
 			status TEXT NOT NULL,
 			command TEXT NOT NULL,
 			output TEXT,
+			"group" TEXT NOT NULL DEFAULT '',
 			part TEXT NOT NULL DEFAULT 'default',
 			category TEXT NOT NULL DEFAULT '',
 			started_at DATETIME NOT NULL,
@@ -58,8 +60,10 @@ func (s *Storage) initSchema() error {
 		`CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_runs_started_at ON runs(started_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_runs_project_name ON runs(project_name)`,
+		`CREATE INDEX IF NOT EXISTS idx_runs_group ON runs("group")`,
 		`CREATE INDEX IF NOT EXISTS idx_runs_part ON runs(part)`,
 		`CREATE INDEX IF NOT EXISTS idx_step_executions_run_id ON step_executions(run_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_step_executions_group ON step_executions("group")`,
 		`CREATE INDEX IF NOT EXISTS idx_step_executions_part ON step_executions(part)`,
 		`CREATE INDEX IF NOT EXISTS idx_step_executions_category ON step_executions(category)`,
 	}
@@ -85,8 +89,12 @@ func (s *Storage) migrateSchema() error {
 		`ALTER TABLE runs ADD COLUMN project_name TEXT NOT NULL DEFAULT ''`,
 		// Add part to runs if it doesn't exist
 		`ALTER TABLE runs ADD COLUMN part TEXT NOT NULL DEFAULT 'default'`,
+		// Add group to runs if it doesn't exist
+		`ALTER TABLE runs ADD COLUMN "group" TEXT NOT NULL DEFAULT ''`,
 		// Add part to step_executions if it doesn't exist
 		`ALTER TABLE step_executions ADD COLUMN part TEXT NOT NULL DEFAULT 'default'`,
+		// Add group to step_executions if it doesn't exist
+		`ALTER TABLE step_executions ADD COLUMN "group" TEXT NOT NULL DEFAULT ''`,
 		// Add category to step_executions if it doesn't exist
 		`ALTER TABLE step_executions ADD COLUMN category TEXT NOT NULL DEFAULT ''`,
 	}

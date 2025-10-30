@@ -174,9 +174,45 @@ func (s *Scheduler) executeSchedule(projectName string, schedule Schedule) {
 	}
 
 	configPath := project.GetPipegoPath(s.baseDir)
+	
+	// Load config to expand groups
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		log.Printf("❌ Failed to load config for %s: %v", projectName, err)
+		return
+	}
+	
+	// Collect all parts to run
+	partsToRun := make([]string, 0)
+	
+	// Expand groups to parts
+	if len(schedule.Groups) > 0 {
+		for _, groupName := range schedule.Groups {
+			groupParts, err := cfg.GetGroup(groupName)
+			if err != nil {
+				log.Printf("⚠️  Group '%s' not found in %s", groupName, projectName)
+				continue
+			}
+			for partPath := range groupParts {
+				partsToRun = append(partsToRun, partPath)
+			}
+		}
+	}
+	
+	// Add explicitly specified parts
+	partsToRun = append(partsToRun, schedule.Parts...)
+	
+	// Determine display string
 	partsStr := "all parts"
+	if len(schedule.Groups) > 0 {
+		partsStr = fmt.Sprintf("groups: %s", strings.Join(schedule.Groups, ", "))
+	}
 	if len(schedule.Parts) > 0 {
-		partsStr = strings.Join(schedule.Parts, ", ")
+		if len(schedule.Groups) > 0 {
+			partsStr += fmt.Sprintf(", parts: %s", strings.Join(schedule.Parts, ", "))
+		} else {
+			partsStr = strings.Join(schedule.Parts, ", ")
+		}
 	}
 
 	scheduleType := schedule.At
@@ -184,18 +220,19 @@ func (s *Scheduler) executeSchedule(projectName string, schedule Schedule) {
 		scheduleType = schedule.Every
 	}
 
-	log.Printf("⏰ Schedule triggered: %s (parts: %s) - %s", projectName, partsStr, scheduleType)
+	log.Printf("⏰ Schedule triggered: %s (%s) - %s", projectName, partsStr, scheduleType)
 
 	// Broadcast event to SSE clients
 	broker := events.GetBroker()
 	broker.Broadcast("run_started", map[string]interface{}{
 		"project": projectName,
-		"parts":   schedule.Parts,
+		"parts":   partsToRun,
+		"groups":  schedule.Groups,
 		"type":    "scheduled",
 	})
 
-	// If no parts specified, run all parts
-	if len(schedule.Parts) == 0 {
+	// If no parts or groups specified, run all parts
+	if len(partsToRun) == 0 {
 		_, err := RunPipelineWithOptions(configPath, RunPipelineOptions{
 			Storage:          s.storage,
 			StreamToTerminal: false,
@@ -210,7 +247,7 @@ func (s *Scheduler) executeSchedule(projectName string, schedule Schedule) {
 	}
 
 	// Run specific parts
-	for _, partName := range schedule.Parts {
+	for _, partName := range partsToRun {
 		_, err := RunPipelineWithOptions(configPath, RunPipelineOptions{
 			Storage:          s.storage,
 			StreamToTerminal: false,

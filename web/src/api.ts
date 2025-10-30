@@ -13,6 +13,7 @@ export interface Run {
   status: string;
   config_path: string;
   project_name: string;
+  group: string;
   part: string;
   started_at: string;
   finished_at?: string;
@@ -26,6 +27,7 @@ export interface StepExecution {
   status: string;
   command: string;
   output: string;
+  group: string;
   part: string;
   category: string;
   started_at: string;
@@ -39,6 +41,7 @@ export interface RunDetail {
 }
 
 export interface PartRunStats {
+  group: string;
   part: string;
   run_id: number;
   status: string;
