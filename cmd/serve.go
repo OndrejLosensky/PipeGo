@@ -89,7 +89,14 @@ func Serve() error {
 
 	// API endpoints
 	mux.HandleFunc("/api/runs", api.GetRuns(store))
-	mux.HandleFunc("/api/runs/", api.GetRun(store)) 
+	mux.HandleFunc("/api/runs/", func(w http.ResponseWriter, r *http.Request) {
+		// Route based on path suffix
+		if strings.HasSuffix(r.URL.Path, "/status") {
+			api.GetRunStatus(store)(w, r)
+		} else {
+			api.GetRun(store)(w, r)
+		}
+	}) 
 	mux.HandleFunc("/api/run", api.PostRun(store))
 	
 	mux.HandleFunc("/api/projects", api.GetProjects(projectsConfig, cwd))

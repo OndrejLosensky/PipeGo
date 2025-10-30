@@ -72,8 +72,12 @@ export const api = {
     return res.json();
   },
 
-  triggerRun: async (projectName: string): Promise<{ run_id: number }> => {
-    const res = await fetch(`${API_BASE}/projects/${projectName}/run`, {
+  triggerRun: async (projectName: string, part?: string): Promise<{ run_id: number }> => {
+    const url = part 
+      ? `${API_BASE}/projects/${projectName}/run?part=${encodeURIComponent(part)}`
+      : `${API_BASE}/projects/${projectName}/run`;
+    
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
     });

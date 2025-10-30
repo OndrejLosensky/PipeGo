@@ -54,6 +54,11 @@ func RunPipelineWithOptions(configPath string, opts RunPipelineOptions) (*Pipeli
 
 	// Execute each part
 	for partName, steps := range allParts {
+		// Skip this part if filter is set and doesn't match
+		if opts.PartFilter != "" && partName != opts.PartFilter {
+			continue
+		}
+
 		if opts.StreamToTerminal {
 			if partName != "default" {
 				fmt.Printf("\n📦 Part: %s\n", partName)

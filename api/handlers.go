@@ -84,6 +84,43 @@ func GetRun(store *storage.Storage) http.HandlerFunc {
 	}
 }
 
+// GetRunStatus returns just the status of a run (lightweight for polling)
+func GetRunStatus(store *storage.Storage) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Parse run ID from URL: /api/runs/:id/status
+		pathParts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+		if len(pathParts) < 3 {
+			http.Error(w, "Invalid path", http.StatusBadRequest)
+			return
+		}
+
+		runID, err := strconv.Atoi(pathParts[2])
+		if err != nil {
+			http.Error(w, "Invalid run ID", http.StatusBadRequest)
+			return
+		}
+
+		// Get only the run (no steps for lightweight response)
+		run, err := store.GetRun(runID)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Run not found: %v", err), http.StatusNotFound)
+			return
+		}
+
+		// Return minimal status info
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id":     run.ID,
+			"status": run.Status,
+		})
+	}
+}
+
 // PostRun triggers a new pipeline run
 func PostRun(store *storage.Storage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -281,28 +318,36 @@ func PostProjectRun(store *storage.Storage, projectsConfig *runner.ProjectsConfi
 		// Get pipego.yml path
 		configPath := project.GetPipegoPath(baseDir)
 
-		// Run pipeline in background
-		log.Printf("🚀 Triggering pipeline for project %s: %s", projectName, configPath)
+		// Get optional part filter from query parameter
+		partFilter := r.URL.Query().Get("part")
 
-		result, err := runner.RunPipelineWithOptions(configPath, runner.RunPipelineOptions{
-			Storage:          store,
-			StreamToTerminal: false,
-		})
-
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"error":  err.Error(),
-				"run_id": result.RunID,
-			})
-			return
+		// Run pipeline in background (async)
+		if partFilter != "" {
+			log.Printf("🚀 Triggering pipeline for project %s (part: %s): %s", projectName, partFilter, configPath)
+		} else {
+			log.Printf("🚀 Triggering pipeline for project %s: %s", projectName, configPath)
 		}
 
-		// Return success response
+		// Start pipeline in goroutine - runs completely async
+		go func() {
+			_, err := runner.RunPipelineWithOptions(configPath, runner.RunPipelineOptions{
+				Storage:          store,
+				StreamToTerminal: false,
+				PartFilter:       partFilter,
+			})
+
+			if err != nil {
+				log.Printf("❌ Pipeline execution failed for %s: %v", projectName, err)
+			} else {
+				log.Printf("✅ Pipeline completed successfully for %s", projectName)
+			}
+		}()
+
+		// Return immediately - the run will be created in DB and polling will pick it up
+		w.WriteHeader(http.StatusAccepted)
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"run_id":  result.RunID,
-			"status":  result.Status,
-			"message": fmt.Sprintf("Pipeline started successfully for %s", projectName),
+			"message": fmt.Sprintf("Pipeline started for %s", projectName),
+			"status":  "starting",
 		})
 	}
 }

@@ -28,5 +28,6 @@ type StepResult struct {
 type RunPipelineOptions struct {
 	Storage          *storage.Storage // Optional storage for database persistence
 	StreamToTerminal bool             // If true, also stream output to terminal
+	PartFilter       string           // Optional: run only this specific part (empty = run all)
 }
 
