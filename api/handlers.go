@@ -353,7 +353,7 @@ func PostProjectRun(store *storage.Storage, projectsConfig *runner.ProjectsConfi
 }
 
 // GetProjectStats returns latest runs grouped by part for a project
-func GetProjectStats(store *storage.Storage) http.HandlerFunc {
+func GetProjectStats(store *storage.Storage, projectsConfig *runner.ProjectsConfig, baseDir string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -369,11 +369,41 @@ func GetProjectStats(store *storage.Storage) http.HandlerFunc {
 
 		projectName := pathParts[2]
 
-		// Get latest 5 runs per part
+		// Get latest 5 runs per part from database
 		stats, err := store.GetLatestRunsByPart(projectName, 5)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to get project stats: %v", err), http.StatusInternalServerError)
 			return
+		}
+
+		// Load project config to get all defined parts
+		project, err := projectsConfig.GetProject(projectName)
+		if err == nil {
+			configPath := project.GetPipegoPath(baseDir)
+			cfg, err := runner.LoadConfig(configPath)
+			if err == nil {
+				// Get all parts from config
+				allParts := cfg.GetAllParts()
+				
+				// Track which parts have runs
+				partsWithRuns := make(map[string]bool)
+				for _, stat := range stats {
+					partsWithRuns[stat.Part] = true
+				}
+				
+				// Add placeholder for parts without runs
+				for partName := range allParts {
+					if !partsWithRuns[partName] {
+						// Add empty entry for parts with no runs
+						stats = append(stats, storage.PartRunStats{
+							Part:      partName,
+							RunID:     0,
+							Status:    "",
+							StepCount: 0,
+						})
+					}
+				}
+			}
 		}
 
 		w.Header().Set("Content-Type", "application/json")

@@ -53,6 +53,11 @@ func Serve() error {
 		log.Printf("📁 Loaded %d project(s)", len(projectsConfig.Projects))
 	}
 
+	// Initialize and start scheduler
+	scheduler := runner.NewScheduler(projectsConfig, store, cwd)
+	go scheduler.Start()
+	defer scheduler.Stop()
+
     // Setup HTTP routes
     mux := http.NewServeMux()
 
@@ -88,6 +93,7 @@ func Serve() error {
 	})
 
 	// API endpoints
+	mux.HandleFunc("/api/events", api.SSEHandler()) // Server-Sent Events
 	mux.HandleFunc("/api/runs", api.GetRuns(store))
 	mux.HandleFunc("/api/runs/", func(w http.ResponseWriter, r *http.Request) {
 		// Route based on path suffix
@@ -106,7 +112,7 @@ func Serve() error {
 		} else if strings.HasSuffix(r.URL.Path, "/run") {
 			api.PostProjectRun(store, projectsConfig, cwd)(w, r)
 		} else if strings.HasSuffix(r.URL.Path, "/stats") {
-			api.GetProjectStats(store)(w, r)
+			api.GetProjectStats(store, projectsConfig, cwd)(w, r)
 		} else {
 			http.NotFound(w, r)
 		}

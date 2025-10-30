@@ -21,22 +21,52 @@ export function ProjectView() {
     queryKey: ['stats', selectedProject],
     queryFn: () => api.getProjectStats(selectedProject!),
     enabled: !!selectedProject,
-    refetchInterval: runningParts.size > 0 ? 2000 : false,
+    // Only poll when we have active runs for progress updates
+    refetchInterval: false,
   });
 
   // Additional polling check based on actual running status
   const hasRunningRuns = stats?.some(run => run.status === 'running');
+  const hasTriggeredRuns = runningParts.size > 0;
 
-  // Set up polling when runs are detected as running
+  // Set up fast polling when runs are active (for real-time progress)
   useEffect(() => {
-    if (!hasRunningRuns) return;
+    if (!hasRunningRuns && !hasTriggeredRuns) return;
 
     const interval = setInterval(() => {
       refetch();
-    }, 2000);
+    }, 2000); // Poll every 2 seconds when active
 
     return () => clearInterval(interval);
-  }, [hasRunningRuns, refetch]);
+  }, [hasRunningRuns, hasTriggeredRuns, refetch]);
+
+  // Set up Server-Sent Events for instant run notifications
+  useEffect(() => {
+    const eventSource = new EventSource('http://localhost:8080/api/events');
+
+    eventSource.onopen = () => {
+      console.log('📡 Connected to PipeGo events');
+    };
+
+    eventSource.addEventListener('run_started', (event) => {
+      const data = JSON.parse(event.data);
+      console.log('🚀 Run started:', data);
+      
+      // Refetch immediately when a run starts
+      if (data.project === selectedProject) {
+        refetch();
+      }
+    });
+
+    eventSource.onerror = (error) => {
+      console.error('SSE connection error:', error);
+      eventSource.close();
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, [selectedProject, refetch]);
 
   // Group runs by part (do this early so handlers can use it)
   const groupedByPart: Record<string, PartRunStats[]> = {};
@@ -193,6 +223,7 @@ export function ProjectView() {
                 <div className="space-y-6">
                   {Object.entries(groupedByPart).map(([part, runs]) => {
                     const partRunning = isPartRunning(part);
+                    const hasRuns = runs.length > 0 && runs[0].run_id !== 0;
                     
                     return (
                       <div key={part} className="bg-white rounded-lg border border-gray-200 shadow-sm">
@@ -215,8 +246,13 @@ export function ProjectView() {
                             {partRunning ? 'Running...' : 'Run'}
                           </button>
                         </div>
-                        <div className="divide-y divide-gray-100">
-                          {runs.map((run) => (
+                        {!hasRuns ? (
+                          <div className="px-6 py-8 text-center text-gray-500 text-sm">
+                            No runs yet. Click "Run" to start!
+                          </div>
+                        ) : (
+                          <div className="divide-y divide-gray-100">
+                            {runs.map((run) => (
                             <Link
                               key={run.run_id}
                               to={`/projects/${selectedProject}/runs/${run.run_id}`}
@@ -268,7 +304,8 @@ export function ProjectView() {
                               </div>
                             </Link>
                           ))}
-                        </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}

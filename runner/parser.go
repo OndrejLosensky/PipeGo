@@ -16,11 +16,19 @@ type Part struct {
     Steps []Step `yaml:"steps"`
 }
 
+type Schedule struct {
+    Parts []string `yaml:"parts"` // Empty means all parts
+    At    string   `yaml:"at,omitempty"`
+    Every string   `yaml:"every,omitempty"`
+}
+
 type Config struct {
     // Backward compatibility: support old format with direct steps array
     Steps []Step `yaml:"steps,omitempty"`
     // New format: support parts map
     Parts map[string]Part `yaml:"parts,omitempty"`
+    // Schedules for automatic runs
+    Schedules []Schedule `yaml:"schedules,omitempty"`
 }
 
 // GetAllParts returns all parts with their steps
