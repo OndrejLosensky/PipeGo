@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
-import { api } from '../api';
+import { api, type PartRunStats } from '../api';
 
 export function ProjectView() {
   const { projectName } = useParams();
@@ -11,9 +11,9 @@ export function ProjectView() {
 
   const selectedProject = projectName || projects?.[0]?.name;
 
-  const { data: runs, isLoading } = useQuery({
-    queryKey: ['runs', selectedProject],
-    queryFn: () => api.getProjectRuns(selectedProject!),
+  const { data: stats, isLoading } = useQuery({
+    queryKey: ['stats', selectedProject],
+    queryFn: () => api.getProjectStats(selectedProject!),
     enabled: !!selectedProject,
   });
 
@@ -23,8 +23,31 @@ export function ProjectView() {
       await api.triggerRun(selectedProject);
       window.location.reload();
     } catch (error) {
-      console.error(`Failed to trigger run: ${error}`);
+      alert('Failed to trigger run');
     }
+  };
+
+  // Group runs by part
+  const groupedByPart: Record<string, PartRunStats[]> = {};
+  stats?.forEach((stat) => {
+    if (!groupedByPart[stat.part]) {
+      groupedByPart[stat.part] = [];
+    }
+    groupedByPart[stat.part].push(stat);
+  });
+
+  const formatTime = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (minutes < 1) return 'just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    return `${days}d ago`;
   };
 
   return (
@@ -50,7 +73,7 @@ export function ProjectView() {
           </div>
         </div>
 
-        {/* Main content */}
+        {/* Main content - TeamCity style */}
         <div className="flex-1 p-8">
           {selectedProject && (
             <>
@@ -67,64 +90,55 @@ export function ProjectView() {
               {isLoading ? (
                 <div className="text-gray-500">Loading...</div>
               ) : (
-                <div className="bg-white rounded-lg border border-gray-200">
-                  <table className="w-full">
-                    <thead className="bg-gray-50 border-b border-gray-200">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                          ID
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                          Part
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                          Status
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                          Started
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                          Duration
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {runs?.map((run) => (
-                        <tr key={run.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3">
-                            <Link
-                              to={`/projects/${selectedProject}/runs/${run.id}`}
-                              className="text-blue-600 hover:underline"
-                            >
-                              #{run.id}
-                            </Link>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
-                            {run.part === 'default' ? '-' : run.part}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${
-                                run.status === 'success'
-                                  ? 'bg-green-100 text-green-800'
-                                  : run.status === 'failed'
-                                  ? 'bg-red-100 text-red-800'
-                                  : 'bg-yellow-100 text-yellow-800'
-                              }`}
-                            >
-                              {run.status}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
-                            {new Date(run.started_at).toLocaleString()}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
-                            {run.duration || '-'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="space-y-6">
+                  {Object.entries(groupedByPart).map(([part, runs]) => (
+                    <div key={part} className="bg-white rounded-lg border border-gray-200">
+                      <div className="px-6 py-3 border-b border-gray-200 bg-gray-50">
+                        <h3 className="text-lg font-semibold capitalize">{part}</h3>
+                      </div>
+                      <div className="divide-y divide-gray-100">
+                        {runs.map((run) => (
+                          <Link
+                            key={run.run_id}
+                            to={`/projects/${selectedProject}/runs/${run.run_id}`}
+                            className="flex items-center justify-between px-6 py-4 hover:bg-gray-50"
+                          >
+                            <div className="flex items-center gap-4">
+                              <span
+                                className={`w-3 h-3 rounded-full ${
+                                  run.status === 'success'
+                                    ? 'bg-green-500'
+                                    : run.status === 'failed'
+                                    ? 'bg-red-500'
+                                    : 'bg-yellow-500'
+                                }`}
+                              />
+                              <div>
+                                <div className="font-medium">Run #{run.run_id}</div>
+                                <div className="text-sm text-gray-500">
+                                  {run.step_count} steps · {formatTime(run.started_at)}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-6">
+                              <div className="text-sm text-gray-600">{run.duration || '-'}</div>
+                              <span
+                                className={`px-3 py-1 text-xs font-semibold rounded-full ${
+                                  run.status === 'success'
+                                    ? 'bg-green-100 text-green-800'
+                                    : run.status === 'failed'
+                                    ? 'bg-red-100 text-red-800'
+                                    : 'bg-yellow-100 text-yellow-800'
+                                }`}
+                              >
+                                {run.status}
+                              </span>
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </>
@@ -134,4 +148,3 @@ export function ProjectView() {
     </div>
   );
 }
-

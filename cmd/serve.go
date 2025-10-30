@@ -98,6 +98,8 @@ func Serve() error {
 			api.GetProjectRuns(store)(w, r)
 		} else if strings.HasSuffix(r.URL.Path, "/run") {
 			api.PostProjectRun(store, projectsConfig, cwd)(w, r)
+		} else if strings.HasSuffix(r.URL.Path, "/stats") {
+			api.GetProjectStats(store)(w, r)
 		} else {
 			http.NotFound(w, r)
 		}

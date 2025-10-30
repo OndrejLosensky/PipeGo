@@ -307,3 +307,32 @@ func PostProjectRun(store *storage.Storage, projectsConfig *runner.ProjectsConfi
 	}
 }
 
+// GetProjectStats returns latest runs grouped by part for a project
+func GetProjectStats(store *storage.Storage) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Parse project name from URL: /api/projects/:name/stats
+		pathParts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+		if len(pathParts) < 3 {
+			http.Error(w, "Invalid path", http.StatusBadRequest)
+			return
+		}
+
+		projectName := pathParts[2]
+
+		// Get latest 5 runs per part
+		stats, err := store.GetLatestRunsByPart(projectName, 5)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to get project stats: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(stats)
+	}
+}
+

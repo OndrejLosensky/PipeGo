@@ -38,6 +38,15 @@ export interface RunDetail {
   steps: StepExecution[];
 }
 
+export interface PartRunStats {
+  part: string;
+  run_id: number;
+  status: string;
+  duration?: string;
+  started_at: string;
+  step_count: number;
+}
+
 export const api = {
   getProjects: async (): Promise<Project[]> => {
     const res = await fetch(`${API_BASE}/projects`);
@@ -48,6 +57,12 @@ export const api = {
   getProjectRuns: async (projectName: string): Promise<Run[]> => {
     const res = await fetch(`${API_BASE}/projects/${projectName}/runs`);
     if (!res.ok) throw new Error('Failed to fetch runs');
+    return res.json();
+  },
+
+  getProjectStats: async (projectName: string): Promise<PartRunStats[]> => {
+    const res = await fetch(`${API_BASE}/projects/${projectName}/stats`);
+    if (!res.ok) throw new Error('Failed to fetch project stats');
     return res.json();
   },
 
