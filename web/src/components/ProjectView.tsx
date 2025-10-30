@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
 import { api, type PartRunStats } from '../api';
 import { useState, useEffect } from 'react';
+import { formatDuration } from '../utils/duration';
 
 export function ProjectView() {
   const { projectName } = useParams();
@@ -262,7 +263,7 @@ export function ProjectView() {
                                 <span className="w-20 text-right">{formatTime(run.started_at)}</span>
                                 <span className="text-gray-400">·</span>
                                 <span className="w-16 text-right font-medium">
-                                  {run.duration ? `${parseFloat(run.duration.replace('s', '')).toFixed(2)}s` : '-'}
+                                  {formatDuration(run.duration)}
                                 </span>
                               </div>
                             </Link>
