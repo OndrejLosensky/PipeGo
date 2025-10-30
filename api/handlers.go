@@ -87,8 +87,13 @@ func GetRun(store *storage.Storage) http.HandlerFunc {
 // PostRun triggers a new pipeline run
 func PostRun(store *storage.Storage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		
 		if r.Method != http.MethodPost {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": "Method not allowed",
+			})
 			return
 		}
 
@@ -98,12 +103,18 @@ func PostRun(store *storage.Storage) http.HandlerFunc {
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": fmt.Sprintf("Invalid request: %v", err),
+			})
 			return
 		}
 
 		if req.ConfigPath == "" {
-			http.Error(w, "config_path is required", http.StatusBadRequest)
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": "config_path is required",
+			})
 			return
 		}
 
@@ -112,7 +123,10 @@ func PostRun(store *storage.Storage) http.HandlerFunc {
 		if !filepath.IsAbs(configPath) {
 			cwd, err := os.Getwd()
 			if err != nil {
-				http.Error(w, fmt.Sprintf("Failed to get working directory: %v", err), http.StatusInternalServerError)
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"error": fmt.Sprintf("Failed to get working directory: %v", err),
+				})
 				return
 			}
 			configPath = filepath.Join(cwd, configPath)
@@ -120,7 +134,10 @@ func PostRun(store *storage.Storage) http.HandlerFunc {
 
 		// Check if file exists
 		if _, err := os.Stat(configPath); os.IsNotExist(err) {
-			http.Error(w, fmt.Sprintf("Config file not found: %s", configPath), http.StatusNotFound)
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": fmt.Sprintf("Config file not found: %s", configPath),
+			})
 			return
 		}
 
@@ -133,7 +150,6 @@ func PostRun(store *storage.Storage) http.HandlerFunc {
 		})
 
 		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"error":  err.Error(),
@@ -143,7 +159,6 @@ func PostRun(store *storage.Storage) http.HandlerFunc {
 		}
 
 		// Return success response
-		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"run_id":  result.RunID,
 			"status":  result.Status,
