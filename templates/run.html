@@ -23,6 +23,8 @@
         <p><a href="/">← Back to Dashboard</a></p>
 
         <div style="margin: 20px 0;">
+            <strong>Project:</strong> {{.Run.ProjectName}}<br>
+            <strong>Part:</strong> {{if eq .Run.Part "default"}}<em>default</em>{{else}}{{.Run.Part}}{{end}}<br>
             <strong>Config:</strong> {{.Run.ConfigPath}}<br>
             <strong>Status:</strong> 
             {{if eq .Run.Status "success"}}<span class="status-success">✅ {{.Run.Status}}</span>{{end}}
@@ -39,6 +41,7 @@
             <thead>
                 <tr>
                     <th>Name</th>
+                    <th>Category</th>
                     <th>Status</th>
                     <th>Duration</th>
                     <th>Output</th>
@@ -48,6 +51,7 @@
                 {{range .Steps}}
                 <tr>
                     <td>{{.Name}}</td>
+                    <td>{{if .Category}}{{.Category}}{{else}}-{{end}}</td>
                     <td>
                         {{if eq .Status "success"}}<span class="status-success">✅</span>{{end}}
                         {{if eq .Status "failed"}}<span class="status-failed">❌</span>{{end}}
@@ -64,7 +68,7 @@
                     </td>
                 </tr>
                 {{else}}
-                <tr><td colspan="4">No steps</td></tr>
+                <tr><td colspan="5">No steps</td></tr>
                 {{end}}
             </tbody>
         </table>

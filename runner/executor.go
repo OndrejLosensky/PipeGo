@@ -40,41 +40,63 @@ func RunPipelineWithOptions(configPath string, opts RunPipelineOptions) (*Pipeli
 	}
 	defer os.Chdir(originalDir)
 
-	// Create run in database if storage is provided
-	var run *storage.Run
-	if opts.Storage != nil {
-		run, err = opts.Storage.CreateRun(configPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create run: %w", err)
-		}
-	}
+	// Extract project name from config path (directory name)
+	projectName := filepath.Base(configDir)
+
+	// Get all parts from config
+	allParts := cfg.GetAllParts()
 
 	result := &PipelineResult{
 		RunID:  0,
-		Steps:  make([]StepResult, 0, len(cfg.Steps)),
+		Steps:  make([]StepResult, 0),
 		Status: "running",
 	}
-	if run != nil {
-		result.RunID = run.ID
-	}
 
-	// Execute each step
-	for _, step := range cfg.Steps {
-		stepResult, err := executeStep(step, result.RunID, opts)
-		
-		result.Steps = append(result.Steps, stepResult)
-		
-		if err != nil {
-			result.Status = "failed"
-			result.Duration = time.Since(startTime)
-			result.Error = err
-
-			// Update run status in database
-			if opts.Storage != nil {
-				_ = opts.Storage.UpdateRunStatus(result.RunID, "failed", result.Duration)
+	// Execute each part
+	for partName, steps := range allParts {
+		if opts.StreamToTerminal {
+			if partName != "default" {
+				fmt.Printf("\n📦 Part: %s\n", partName)
 			}
+		}
 
-			return result, err
+		// Create run in database for this part if storage is provided
+		var run *storage.Run
+		if opts.Storage != nil {
+			run, err = opts.Storage.CreateRun(configPath, projectName, partName)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create run: %w", err)
+			}
+			result.RunID = run.ID
+		}
+
+		// Execute each step in the part
+		for _, step := range steps {
+			stepResult, err := executeStep(step, partName, result.RunID, opts)
+			
+			result.Steps = append(result.Steps, stepResult)
+			
+			if err != nil {
+				result.Status = "failed"
+				result.Duration = time.Since(startTime)
+				result.Error = err
+
+				// Update run status in database
+				if opts.Storage != nil {
+					_ = opts.Storage.UpdateRunStatus(result.RunID, "failed", result.Duration)
+				}
+
+				return result, err
+			}
+		}
+
+		// Update run status for this part
+		if opts.Storage != nil {
+			partDuration := time.Since(startTime)
+			err = opts.Storage.UpdateRunStatus(result.RunID, "success", partDuration)
+			if err != nil {
+				return nil, fmt.Errorf("failed to update run status: %w", err)
+			}
 		}
 	}
 
@@ -82,33 +104,31 @@ func RunPipelineWithOptions(configPath string, opts RunPipelineOptions) (*Pipeli
 	result.Duration = time.Since(startTime)
 
 	if opts.StreamToTerminal {
-		fmt.Println("🏁 All steps finished successfully.")
-	}
-
-	// Update run status in database
-	if opts.Storage != nil {
-		err = opts.Storage.UpdateRunStatus(result.RunID, "success", result.Duration)
-		if err != nil {
-			return nil, fmt.Errorf("failed to update run status: %w", err)
-		}
+		fmt.Println("\n🏁 All steps finished successfully.")
 	}
 
 	return result, nil
 }
 
 // executeStep executes a single step and returns its result
-func executeStep(step Step, runID int, opts RunPipelineOptions) (StepResult, error) {
+func executeStep(step Step, partName string, runID int, opts RunPipelineOptions) (StepResult, error) {
 	stepStart := time.Now()
 
 	if opts.StreamToTerminal {
 		fmt.Println("→", step.Name)
 	}
 
+	// Use empty string for category if not set
+	category := step.Category
+	if category == "" {
+		category = ""
+	}
+
 	// Create step execution record if storage is provided
 	var stepExec *storage.StepExecution
 	var err error
 	if opts.Storage != nil {
-		stepExec, err = opts.Storage.CreateStepExecution(runID, step.Name, step.Run)
+		stepExec, err = opts.Storage.CreateStepExecution(runID, step.Name, step.Run, partName, category)
 		if err != nil {
 			return StepResult{}, fmt.Errorf("failed to create step execution: %w", err)
 		}

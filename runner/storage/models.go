@@ -4,12 +4,14 @@ import "time"
 
 // Run represents a pipeline execution
 type Run struct {
-	ID         int        `json:"id"`
-	Status     string     `json:"status"` // "running", "success", "failed"
-	ConfigPath string     `json:"config_path"`
-	StartedAt  time.Time  `json:"started_at"`
-	FinishedAt *time.Time `json:"finished_at,omitempty"`
-	Duration   *string    `json:"duration,omitempty"`
+	ID          int        `json:"id"`
+	Status      string     `json:"status"` // "running", "success", "failed"
+	ConfigPath  string     `json:"config_path"`
+	ProjectName string     `json:"project_name"`
+	Part        string     `json:"part"` // The part being executed (e.g., "frontend", "backend", "default")
+	StartedAt   time.Time  `json:"started_at"`
+	FinishedAt  *time.Time `json:"finished_at,omitempty"`
+	Duration    *string    `json:"duration,omitempty"`
 }
 
 // StepExecution represents execution of a single step
@@ -20,6 +22,8 @@ type StepExecution struct {
 	Status     string     `json:"status"` // "running", "success", "failed"
 	Command    string     `json:"command"`
 	Output     string     `json:"output"`
+	Part       string     `json:"part"`     // The part this step belongs to
+	Category   string     `json:"category"` // The category (tests, deploy, setup, etc.)
 	StartedAt  time.Time  `json:"started_at"`
 	FinishedAt *time.Time `json:"finished_at,omitempty"`
 	Duration   *string    `json:"duration,omitempty"`

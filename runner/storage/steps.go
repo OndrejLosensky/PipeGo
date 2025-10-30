@@ -7,11 +7,11 @@ import (
 )
 
 // CreateStepExecution creates a new step execution record
-func (s *Storage) CreateStepExecution(runID int, name, command string) (*StepExecution, error) {
+func (s *Storage) CreateStepExecution(runID int, name, command, part, category string) (*StepExecution, error) {
 	now := time.Now()
 	result, err := s.db.Exec(
-		"INSERT INTO step_executions (run_id, name, status, command, started_at) VALUES (?, ?, ?, ?, ?)",
-		runID, name, "running", command, now,
+		"INSERT INTO step_executions (run_id, name, status, command, part, category, started_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		runID, name, "running", command, part, category, now,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create step execution: %w", err)
@@ -28,6 +28,8 @@ func (s *Storage) CreateStepExecution(runID int, name, command string) (*StepExe
 		Name:      name,
 		Status:    "running",
 		Command:   command,
+		Part:      part,
+		Category:  category,
 		StartedAt: now,
 	}, nil
 }
@@ -49,7 +51,7 @@ func (s *Storage) UpdateStepExecution(stepID int, status, output string, duratio
 // GetStepExecutions retrieves all step executions for a run
 func (s *Storage) GetStepExecutions(runID int) ([]*StepExecution, error) {
 	rows, err := s.db.Query(
-		"SELECT id, run_id, name, status, command, output, started_at, finished_at, duration FROM step_executions WHERE run_id = ? ORDER BY id ASC",
+		"SELECT id, run_id, name, status, command, output, part, category, started_at, finished_at, duration FROM step_executions WHERE run_id = ? ORDER BY id ASC",
 		runID,
 	)
 	if err != nil {
@@ -64,7 +66,7 @@ func (s *Storage) GetStepExecutions(runID int) ([]*StepExecution, error) {
 		var finishedAt sql.NullTime
 		var duration sql.NullString
 
-		err := rows.Scan(&step.ID, &step.RunID, &step.Name, &step.Status, &step.Command, &output, &step.StartedAt, &finishedAt, &duration)
+		err := rows.Scan(&step.ID, &step.RunID, &step.Name, &step.Status, &step.Command, &output, &step.Part, &step.Category, &step.StartedAt, &finishedAt, &duration)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan step execution: %w", err)
 		}

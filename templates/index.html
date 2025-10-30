@@ -39,6 +39,8 @@
             <thead>
                 <tr>
                     <th>ID</th>
+                    <th>Project</th>
+                    <th>Part</th>
                     <th>Config</th>
                     <th>Status</th>
                     <th>Started</th>
@@ -50,6 +52,8 @@
                 {{range .Runs}}
                 <tr>
                     <td>{{.ID}}</td>
+                    <td>{{.ProjectName}}</td>
+                    <td>{{if eq .Part "default"}}-{{else}}{{.Part}}{{end}}</td>
                     <td>{{.ConfigPath}}</td>
                     <td>
                         {{if eq .Status "success"}}<span class="status-success">✅ {{.Status}}</span>{{end}}
@@ -61,7 +65,7 @@
                     <td><a href="/runs/{{.ID}}">View Details</a></td>
                 </tr>
                 {{else}}
-                <tr><td colspan="6">No runs yet</td></tr>
+                <tr><td colspan="8">No runs yet</td></tr>
                 {{end}}
             </tbody>
         </table>
