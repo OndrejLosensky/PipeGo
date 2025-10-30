@@ -37,4 +37,8 @@ Thumbs.db
 
 
 # Database
-*.db   
+*.db
+
+# Environment variables
+.env
+.env.local   

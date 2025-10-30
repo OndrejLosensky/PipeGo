@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PipeGo</title>
+    <style>
+        body { font-family: monospace; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { color: #333; }
+        table { width: 100%; border-collapse: collapse; background: white; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background: #333; color: white; }
+        .status-success { color: #28a745; font-weight: bold; }
+        .status-failed { color: #dc3545; font-weight: bold; }
+        .status-running { color: #ffc107; font-weight: bold; }
+        a { color: #007bff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .log { background: #000; color: #0f0; padding: 15px; border-radius: 4px; white-space: pre-wrap; font-size: 12px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PipeGo Dashboard</h1>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Config</th>
+                    <th>Status</th>
+                    <th>Started</th>
+                    <th>Duration</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Runs}}
+                <tr>
+                    <td>{{.ID}}</td>
+                    <td>{{.ConfigPath}}</td>
+                    <td>
+                        {{if eq .Status "success"}}<span class="status-success">✅ {{.Status}}</span>{{end}}
+                        {{if eq .Status "failed"}}<span class="status-failed">❌ {{.Status}}</span>{{end}}
+                        {{if eq .Status "running"}}<span class="status-running">⏳ {{.Status}}</span>{{end}}
+                    </td>
+                    <td>{{.StartedAt.Format "2006-01-02 15:04:05"}}</td>
+                    <td>{{if .Duration}}{{.Duration}}{{else}}-{{end}}</td>
+                    <td><a href="/runs/{{.ID}}">View Details</a></td>
+                </tr>
+                {{else}}
+                <tr><td colspan="6">No runs yet</td></tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
+
