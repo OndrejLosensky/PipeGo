@@ -167,3 +167,143 @@ func PostRun(store *storage.Storage) http.HandlerFunc {
 	}
 }
 
+// GetProjects returns all configured projects
+func GetProjects(projectsConfig *runner.ProjectsConfig, baseDir string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Validate each project
+		type ProjectResponse struct {
+			runner.Project
+			Valid bool   `json:"valid"`
+			Error string `json:"error,omitempty"`
+		}
+
+		projects := make([]ProjectResponse, 0, len(projectsConfig.Projects))
+		for _, project := range projectsConfig.Projects {
+			pr := ProjectResponse{Project: project, Valid: true}
+			if err := project.Validate(baseDir); err != nil {
+				pr.Valid = false
+				pr.Error = err.Error()
+			}
+			projects = append(projects, pr)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(projects)
+	}
+}
+
+// GetProjectRuns returns runs for a specific project
+func GetProjectRuns(store *storage.Storage) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Parse project name from URL: /api/projects/:name/runs
+		pathParts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+		if len(pathParts) < 3 {
+			http.Error(w, "Invalid path", http.StatusBadRequest)
+			return
+		}
+
+		projectName := pathParts[2]
+
+		// Get all runs and filter by project name
+		runs, err := store.GetRuns(100)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to get runs: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Filter runs for this project
+		projectRuns := make([]*storage.Run, 0)
+		for _, run := range runs {
+			if run.ProjectName == projectName {
+				projectRuns = append(projectRuns, run)
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(projectRuns)
+	}
+}
+
+// PostProjectRun triggers a pipeline run for a specific project
+func PostProjectRun(store *storage.Storage, projectsConfig *runner.ProjectsConfig, baseDir string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": "Method not allowed",
+			})
+			return
+		}
+
+		// Parse project name from URL: /api/projects/:name/run
+		pathParts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+		if len(pathParts) < 3 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": "Invalid path",
+			})
+			return
+		}
+
+		projectName := pathParts[2]
+
+		// Get project
+		project, err := projectsConfig.GetProject(projectName)
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": fmt.Sprintf("Project not found: %v", err),
+			})
+			return
+		}
+
+		// Validate project
+		if err := project.Validate(baseDir); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": fmt.Sprintf("Invalid project: %v", err),
+			})
+			return
+		}
+
+		// Get pipego.yml path
+		configPath := project.GetPipegoPath(baseDir)
+
+		// Run pipeline in background
+		log.Printf("🚀 Triggering pipeline for project %s: %s", projectName, configPath)
+
+		result, err := runner.RunPipelineWithOptions(configPath, runner.RunPipelineOptions{
+			Storage:          store,
+			StreamToTerminal: false,
+		})
+
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error":  err.Error(),
+				"run_id": result.RunID,
+			})
+			return
+		}
+
+		// Return success response
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"run_id":  result.RunID,
+			"status":  result.Status,
+			"message": fmt.Sprintf("Pipeline started successfully for %s", projectName),
+		})
+	}
+}
+

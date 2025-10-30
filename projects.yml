@@ -1,0 +1,8 @@
+projects:
+  - name: dummy-app
+    path: ../dummy-app
+    description: React frontend application
+  - name: dummy-backend
+    path: ../dummy-backend
+    description: Node.js Express API
+

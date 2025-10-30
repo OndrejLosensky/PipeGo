@@ -2,16 +2,15 @@ package cmd
 
 import (
     "fmt"
-    "html/template"
     "log"
     "net/http"
     "os"
     "path/filepath"
-    "strconv"
     "strings"
 
     "github.com/joho/godotenv"
     "pipego/api"
+    "pipego/runner"
     "pipego/runner/storage"
 )
 
@@ -44,87 +43,72 @@ func Serve() error {
 	}
 	defer store.Close()
 
-    // Parse templates - each page is now self-contained
-    indexTmpl, err := template.ParseFiles(
-        filepath.Join(cwd, "templates", "index.html"),
-    )
-    if err != nil {
-        log.Fatalf("Failed to load index template: %v", err)
-    }
-
-    runTmpl, err := template.ParseFiles(
-        filepath.Join(cwd, "templates", "run.html"),
-    )
-    if err != nil {
-        log.Fatalf("Failed to load run template: %v", err)
-    }
+	// Load projects configuration
+	projectsPath := filepath.Join(cwd, "projects.yml")
+	projectsConfig, err := runner.LoadProjects(projectsPath)
+	if err != nil {
+		log.Printf("Warning: Failed to load projects config: %v", err)
+		projectsConfig = &runner.ProjectsConfig{Projects: []runner.Project{}}
+	} else {
+		log.Printf("📁 Loaded %d project(s)", len(projectsConfig.Projects))
+	}
 
     // Setup HTTP routes
     mux := http.NewServeMux()
 
-    // Dashboard: list runs
-    mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-        if r.URL.Path != "/" {
-            http.NotFound(w, r)
-            return
-        }
-        runs, err := store.GetRuns(100)
-        if err != nil {
-            http.Error(w, fmt.Sprintf("Failed to load runs: %v", err), http.StatusInternalServerError)
-            return
-        }
-        data := struct {
-            Runs []*storage.Run
-        }{Runs: runs}
-        if err := indexTmpl.Execute(w, data); err != nil {
-            log.Printf("template render error (index): %v", err)
-            return
-        }
-    })
+	// CORS middleware
+	corsMiddleware := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 
-    // Run details: /runs/:id
-    mux.HandleFunc("/runs/", func(w http.ResponseWriter, r *http.Request) {
-        parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-        if len(parts) != 2 || parts[0] != "runs" {
-            http.NotFound(w, r)
-            return
-        }
-        id, err := strconv.Atoi(parts[1])
-        if err != nil {
-            http.Error(w, "Invalid run id", http.StatusBadRequest)
-            return
-        }
-        run, err := store.GetRun(id)
-        if err != nil {
-            http.Error(w, "Run not found", http.StatusNotFound)
-            return
-        }
-        steps, err := store.GetStepExecutions(id)
-        if err != nil {
-            http.Error(w, fmt.Sprintf("Failed to load steps: %v", err), http.StatusInternalServerError)
-            return
-        }
-        data := struct {
-            Run   *storage.Run
-            Steps []*storage.StepExecution
-        }{Run: run, Steps: steps}
-        if err := runTmpl.Execute(w, data); err != nil {
-            log.Printf("template render error (run): %v", err)
-            return
-        }
-    })
+	// Serve React
+	webDir := filepath.Join(cwd, "web", "dist")
+	fileServer := http.FileServer(http.Dir(webDir))
+	
+	// Serve static files from React build
+	mux.Handle("/assets/", fileServer)
+	
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			http.NotFound(w, r)
+			return
+		}
+		
+		indexPath := filepath.Join(webDir, "index.html")
+		http.ServeFile(w, r, indexPath)
+	})
 
 	// API endpoints
 	mux.HandleFunc("/api/runs", api.GetRuns(store))
 	mux.HandleFunc("/api/runs/", api.GetRun(store)) 
 	mux.HandleFunc("/api/run", api.PostRun(store))
+	
+	mux.HandleFunc("/api/projects", api.GetProjects(projectsConfig, cwd))
+	mux.HandleFunc("/api/projects/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/runs") {
+			api.GetProjectRuns(store)(w, r)
+		} else if strings.HasSuffix(r.URL.Path, "/run") {
+			api.PostProjectRun(store, projectsConfig, cwd)(w, r)
+		} else {
+			http.NotFound(w, r)
+		}
+	})
 
-	// Start HTTP server
+	// Start HTTP server with CORS
 	serverAddr := ":" + port
 	log.Printf("🚀 Starting PipeGo server on port %s...", port)
 	log.Printf("📊 Dashboard: http://localhost:%s", port)
 	
-	if err := http.ListenAndServe(serverAddr, mux); err != nil {
+	if err := http.ListenAndServe(serverAddr, corsMiddleware(mux)); err != nil {
 		return fmt.Errorf("server failed: %w", err)
 	}
 

@@ -41,4 +41,9 @@ Thumbs.db
 
 # Environment variables
 .env
-.env.local   
+.env.local
+
+# React/Node
+web/node_modules/
+web/dist/
+web/.vite/   
